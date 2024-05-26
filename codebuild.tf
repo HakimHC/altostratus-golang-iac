@@ -14,6 +14,16 @@ resource "aws_codebuild_project" "main" {
     image                       = "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
+
+    environment_variable {
+      name  = "ECR_REPOSITORY_URL"
+      value = aws_ecr_repository.main.repository_url
+    }
+
+    environment_variable {
+      name  = "IMAGE_NAME"
+      value = "golang-api"
+    }
   }
 
   source {
