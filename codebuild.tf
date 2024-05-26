@@ -1,7 +1,7 @@
 resource "aws_codebuild_project" "main" {
-  name           = "codebuild_project"
-  description    = "CodeBuild project that builds the Go API docker image and pushes it to ECR"
-  build_timeout  = 10
+  name          = "codebuild_project"
+  description   = "CodeBuild project that builds the Go API docker image and pushes it to ECR"
+  build_timeout = 10
 
   service_role = module.codebuild_role.iam_role_arn
 
@@ -17,7 +17,7 @@ resource "aws_codebuild_project" "main" {
   }
 
   source {
-    type            = "CODEPIPELINE"
+    type = "CODEPIPELINE"
   }
 
   tags = local.tags

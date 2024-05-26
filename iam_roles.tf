@@ -1,5 +1,5 @@
 module "codepipeline_role" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role"
+  source = "terraform-aws-modules/iam/aws//modules/iam-assumable-role"
 
   trusted_role_arns = []
 
@@ -19,7 +19,7 @@ module "codepipeline_role" {
 }
 
 module "codebuild_role" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role"
+  source = "terraform-aws-modules/iam/aws//modules/iam-assumable-role"
 
   trusted_role_arns = []
 
