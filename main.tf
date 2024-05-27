@@ -129,6 +129,20 @@ data "aws_iam_policy_document" "codepipeline_policy" {
 
     resources = ["*"]
   }
+
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "codedeploy:CreateDeployment",
+      "codedeploy:GetApplication",
+      "codedeploy:GetDeployment",
+      "codedeploy:GetDeploymentConfig",
+      "codedeploy:RegisterApplicationRevision"
+    ]
+
+    resources = ["*"]
+  }
 }
 
 data "aws_iam_policy_document" "codebuild_policy" {
@@ -211,7 +225,10 @@ data "aws_iam_policy_document" "codedeploy_policy" {
       "cloudwatch:DescribeAlarms",
       "sns:Publish",
       "s3:GetObject",
-      "s3:GetObjectVersion"
+      "s3:GetObjectVersion",
+      "s3:GetBucketVersioning",
+      "s3:PutObjectAcl",
+      "s3:PutObject",
     ]
 
     resources = [
@@ -279,3 +296,77 @@ module "roles" {
   number_of_custom_role_policy_arns = length(each.value["custom_role_policy_arns"])
 }
 
+
+################################################################################
+# VPC
+################################################################################
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+
+  name = "vpc-${var.project}"
+  cidr = "10.0.0.0/16"
+
+  azs             = ["eu-west-1a", "eu-west-1b"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+
+  enable_nat_gateway = true
+
+  tags = local.tags
+}
+
+################################################################################
+# LOAD BALANCER
+################################################################################
+resource "aws_lb" "this" {
+  name               = "test-lb-tf"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [module.alb_sg.security_group_id]
+  subnets            = module.vpc.private_subnets
+
+  enable_deletion_protection = true
+
+  tags = local.tags
+}
+
+resource "aws_lb_target_group" "blue" {
+  name     = "tf-example-lb-tg-blue"
+  port     = 80
+  protocol = "HTTP"
+  target_type = "ip"
+  vpc_id   = module.vpc.vpc_id
+}
+
+resource "aws_lb_target_group" "green" {
+  name     = "tf-example-lb-tg-green"
+  port     = 80
+  protocol = "HTTP"
+  target_type = "ip"
+  vpc_id   = module.vpc.vpc_id
+}
+
+resource "aws_lb_listener" "this" {
+  load_balancer_arn = aws_lb.this.arn
+  port              = "80"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.blue.arn
+  }
+}
+
+
+module "alb_sg" {
+  source = "terraform-aws-modules/security-group/aws"
+
+  name        = "alb-api-sg"
+  description = "Security group for ALB with TCP/443 open publicly"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks      = ["0.0.0.0/0"]
+  ingress_rules            = ["http-80-tcp"]
+
+  egress_cidr_blocks      = ["0.0.0.0/0"]
+  egress_rules            = ["all-all"]
+}
