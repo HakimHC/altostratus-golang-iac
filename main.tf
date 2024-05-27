@@ -93,7 +93,7 @@ resource "aws_s3_bucket_public_access_block" "artifact_bucket_pab" {
 
 
 ################################################################################
-# IAM / ROLES
+# IAM POLICIES
 ################################################################################
 data "aws_iam_policy_document" "codepipeline_policy" {
   statement {
@@ -235,6 +235,9 @@ resource "aws_iam_policy" "codedeploy_policy" {
   policy = data.aws_iam_policy_document.codedeploy_policy.json
 }
 
+################################################################################
+# IAM ROLES
+################################################################################
 locals {
   roles = {
 
