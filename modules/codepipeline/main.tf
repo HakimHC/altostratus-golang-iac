@@ -1,10 +1,9 @@
 resource "aws_codepipeline" "codepipeline" {
-  # TODO: change name
-  name     = "tf-test-pipeline"
-  role_arn = module.codepipeline_role.iam_role_arn
+  name     = var.name
+  role_arn = var.role_arn
 
   artifact_store {
-    location = aws_s3_bucket.codepipeline_bucket.bucket
+    location = var.artifact_bucket_name
     type     = "S3"
   }
 
@@ -20,9 +19,9 @@ resource "aws_codepipeline" "codepipeline" {
       output_artifacts = ["source_output"]
 
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
-        FullRepositoryId = "HakimHC/altostratus-golang-api"
-        BranchName       = "main"
+        ConnectionArn    = var.source_connection_arn
+        FullRepositoryId = var.source_repository_id
+        BranchName       = var.source_branch_name
       }
     }
   }
@@ -40,9 +39,10 @@ resource "aws_codepipeline" "codepipeline" {
       version          = "1"
 
       configuration = {
-        ProjectName = module.codebuild.name
+        ProjectName = var.build_project_name
       }
     }
   }
 
+  tags = var.tags
 }

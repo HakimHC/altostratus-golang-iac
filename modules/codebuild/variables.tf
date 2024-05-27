@@ -1,41 +1,41 @@
 variable "name" {
-  type = string
   description = "Name of the codebuild project"
+  type        = string
 }
 
 variable "description" {
-  type = string
   description = "Description of the codebuild project"
-  default = null
+  type        = string
+  default     = null
 }
 
 variable "service_role" {
-  type = string
   description = "Role ARN for the codebuild project"
+  type        = string
 }
 
 variable "artifact_type" {
-  type = string
   description = "Artifact type"
-  default = "NO_ARTIFACTS"
+  type        = string
+  default     = "NO_ARTIFACTS"
 }
 
 variable "source_type" {
-  type = string
   description = "Source type"
+  type        = string
 }
 
 variable "build_timeout" {
-  type = number
   description = "Build timeout limit in minutes"
+  type        = number
 }
 
 variable "environment_variables" {
-  type = map(string)
   description = "Build timeout limit in minutes"
+  type        = map(string)
 }
 
 variable "tags" {
-  type = map(any)
   description = "Tags"
+  type        = map(any)
 }

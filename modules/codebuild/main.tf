@@ -1,4 +1,4 @@
-resource "aws_codebuild_project" "main" {
+resource "aws_codebuild_project" "this" {
   name          = var.name
   description   = var.description
   build_timeout = var.build_timeout
@@ -15,11 +15,11 @@ resource "aws_codebuild_project" "main" {
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
 
-    dynamic environment_variable {
+    dynamic "environment_variable" {
       for_each = var.environment_variables
 
       content {
-        name = environment_variable.key
+        name  = environment_variable.key
         value = environment_variable.value
       }
     }
