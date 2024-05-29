@@ -11,8 +11,8 @@ locals {
 
   account_id = data.aws_caller_identity.current.account_id
 
-  api_container_name  = "go_api"
-  auth_container_name = "go_api_auth"
+  api_container_name  = "api"
+  auth_container_name = "auth"
 }
 
 ################################################################################
@@ -31,7 +31,7 @@ module "codebuild_api_service" {
   artifact_type = "CODEPIPELINE"
 
   environment_variables = {
-    ECR_REPOSITORY_URL = aws_ecr_repository.this.repository_url
+    ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
   }
 
   tags = local.tags
@@ -43,8 +43,8 @@ module "codebuild_api_service" {
 module "codedeploy_api_service" {
   source = "./modules/ecs_deploy"
 
-  app_name               = "api_service_deploy_app"
-  deployment_group_name  = "api_service_deployment_group"
+  app_name               = "${local.api_container_name}_service_deploy_app"
+  deployment_group_name  = "${local.auth_container_name}_service_deployment_group"
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
   service_role_arn = module.roles["codedeploy"].iam_role_arn
@@ -65,7 +65,7 @@ module "codedeploy_api_service" {
 module "codepipeline_api_service" {
   source = "./modules/codepipeline"
 
-  name                  = "deploy_pipeline_${var.project}"
+  name                  = "${local.api_container_name}_deploy_pipeline"
   role_arn              = module.roles["codepipeline"].iam_role_arn
   artifact_bucket_name  = aws_s3_bucket.artifact_bucket.bucket
   source_connection_arn = aws_codestarconnections_connection.this.arn
@@ -97,12 +97,18 @@ resource "aws_codestarconnections_connection" "this" {
 ################################################################################
 # ECR
 ################################################################################
-resource "aws_ecr_repository" "this" {
+resource "aws_ecr_repository" "api" {
   name                 = "${local.api_container_name}_img"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
-  # TODO: Maybe enable scanning, too expensive for now
+  tags = local.tags
+}
+
+resource "aws_ecr_repository" "auth" {
+  name                 = "${local.auth_container_name}_img"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   tags = local.tags
 }
@@ -235,8 +241,7 @@ data "aws_iam_policy_document" "codebuild_policy" {
     ]
 
     resources = [
-      aws_ecr_repository.this.arn,
-      "${aws_ecr_repository.this.arn}/*"
+      "*"
     ]
   }
 
@@ -418,7 +423,7 @@ resource "aws_lb_listener" "this" {
 module "alb_sg" {
   source = "terraform-aws-modules/security-group/aws"
 
-  name        = "alb-api-sg"
+  name        = "alb-sg"
   description = "Security group for ALB with TCP/80 open publicly"
   vpc_id      = module.vpc.vpc_id
 
@@ -432,7 +437,7 @@ module "alb_sg" {
 module "ecs_sg" {
   source = "terraform-aws-modules/security-group/aws"
 
-  name        = "ecs-api-sg"
+  name        = "ecs-sg"
   description = "Security group for ECS service with TCP/80 open publicly"
   vpc_id      = module.vpc.vpc_id
 
@@ -494,8 +499,8 @@ resource "aws_ecs_task_definition" "template" {
   ])
 }
 
-resource "aws_ecs_service" "service" {
-  name            = "ecs_service"
+resource "aws_ecs_service" "api" {
+  name            = "${local.api_container_name}_service"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.template.arn
   desired_count   = 3
