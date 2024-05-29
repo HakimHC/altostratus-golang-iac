@@ -55,6 +55,7 @@ locals {
 # CODE BUILD
 ################################################################################
 module "codebuild" {
+  # TODO: investigate for_each { for k, v ... }
   source = "./modules/codebuild"
 
   for_each = local.pipeline_config
@@ -93,7 +94,6 @@ module "codedeploy" {
   ecs_cluster_name = aws_ecs_cluster.this.name
   ecs_service_name = each.value["service"]
 
-  #  prod_listener_arn = aws_lb_listener.this.arn
   prod_listener_arn = module.alb.listeners["http"].arn
   target_groups     = each.value["target_groups"]
 }
@@ -258,6 +258,8 @@ module "alb" {
       port              = 80
       target_type       = "ip"
       create_attachment = false
+
+      deregistration_delay = "5"
     }
 
     api_tg2 = {
@@ -266,6 +268,8 @@ module "alb" {
       port              = 80
       target_type       = "ip"
       create_attachment = false
+
+      deregistration_delay = "5"
     }
 
     auth_tg1 = {
@@ -274,6 +278,8 @@ module "alb" {
       port              = 80
       target_type       = "ip"
       create_attachment = false
+
+      deregistration_delay = "5"
     }
 
     auth_tg2 = {
@@ -291,20 +297,6 @@ module "alb" {
 ################################################################################
 # SECURITY GROUPS
 ################################################################################
-module "alb_sg" {
-  source = "terraform-aws-modules/security-group/aws"
-
-  name        = "alb-sg"
-  description = "Security group for ALB with TCP/80 open publicly"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress_cidr_blocks = ["0.0.0.0/0"]
-  ingress_rules       = ["http-80-tcp", "http-8080-tcp"]
-
-  egress_cidr_blocks = ["0.0.0.0/0"]
-  egress_rules       = ["all-all"]
-}
-
 module "ecs_sg" {
   source = "terraform-aws-modules/security-group/aws"
 
@@ -312,6 +304,7 @@ module "ecs_sg" {
   description = "Security group for ECS service with TCP/80 open publicly"
   vpc_id      = module.vpc.vpc_id
 
+  # TODO: only allow inbound traffic from within the VPC
   ingress_cidr_blocks = ["0.0.0.0/0"]
   ingress_rules       = ["http-80-tcp", "http-8080-tcp"]
 
@@ -667,6 +660,3 @@ module "roles" {
   custom_role_policy_arns           = each.value["custom_role_policy_arns"]
   number_of_custom_role_policy_arns = length(each.value["custom_role_policy_arns"])
 }
-
-
-#######################
