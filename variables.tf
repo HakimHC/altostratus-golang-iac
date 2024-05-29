@@ -12,12 +12,12 @@ variable "project" {
 
 variable "git_provider" {
   description = "CodeStarConnection source provider type"
-  type = string
-  default = "GitHub"
+  type        = string
+  default     = "GitHub"
 }
 
 variable "source_repo_id" {
   description = "ID of the source repository. Example: foo_user/bar_project"
-  type = string
-  default = "HakimHC/altostratus-golang-api"
+  type        = string
+  default     = "HakimHC/altostratus-golang-api"
 }
