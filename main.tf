@@ -19,13 +19,13 @@ locals {
   pipeline_config = {
     api = {
       # CODE BUILD
-      name = local.api_container_name
+      name               = local.api_container_name
       ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
 
       # CODE DEPLOY
       target_groups = [
-        aws_lb_target_group.blue_green_tg_1.name,
-        aws_lb_target_group.blue_green_tg_2.name
+        module.alb.target_groups["api_tg1"].name,
+        module.alb.target_groups["api_tg2"].name
       ]
       service = aws_ecs_service.api.name
 
@@ -35,13 +35,13 @@ locals {
 
     auth = {
       # CODE BUILD
-      name = local.auth_container_name
+      name               = local.auth_container_name
       ECR_REPOSITORY_URL = aws_ecr_repository.auth.repository_url
 
       # CODE DEPLOY
       target_groups = [
-        aws_lb_target_group.blue_green_tg_3.name,
-        aws_lb_target_group.blue_green_tg_4.name
+        module.alb.target_groups["auth_tg1"].name,
+        module.alb.target_groups["auth_tg2"].name
       ]
       service = aws_ecs_service.auth.name
 
@@ -93,8 +93,9 @@ module "codedeploy" {
   ecs_cluster_name = aws_ecs_cluster.this.name
   ecs_service_name = each.value["service"]
 
-  prod_listener_arn = aws_lb_listener.this.arn
-  target_groups = each.value["target_groups"]
+  #  prod_listener_arn = aws_lb_listener.this.arn
+  prod_listener_arn = module.alb.listeners["http"].arn
+  target_groups     = each.value["target_groups"]
 }
 
 ################################################################################
@@ -109,9 +110,9 @@ module "codepipeline" {
   role_arn              = module.roles["codepipeline"].iam_role_arn
   artifact_bucket_name  = aws_s3_bucket.artifact_bucket.bucket
   source_connection_arn = aws_codestarconnections_connection.this.arn
-  source_repository_id = each.value["source_repository_id"]
-  source_branch_name   = "main"
-  build_project_name   = module.codebuild[each.key].name
+  source_repository_id  = each.value["source_repository_id"]
+  source_branch_name    = "main"
+  build_project_name    = module.codebuild[each.key].name
 
   codedeploy_application_name  = module.codedeploy[each.key].application_name
   codedeploy_deploy_group_name = module.codedeploy[each.key].deployment_group_name
@@ -192,103 +193,99 @@ module "vpc" {
 ################################################################################
 # LOAD BALANCER
 ################################################################################
-resource "aws_lb" "this" {
-  name               = "alb-main"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [module.alb_sg.security_group_id]
-  subnets            = module.vpc.public_subnets
+module "alb" {
+  source = "git::https://github.com/HakimHC/terraform-aws-alb-for-ecs-code-deploy.git?ref=master"
+
+  name    = "alb-main"
+  vpc_id  = module.vpc.vpc_id
+  subnets = module.vpc.public_subnets
 
   enable_deletion_protection = false
 
-  tags = local.tags
-}
-
-# TODO: do for each to create resources dynamically
-
-locals {
-  target_group_mapping = ["api", "api", "auth", "auth"]
-}
-
-#resource "aws_lb_target_group" "target_groups" {
-#  count = length(local.target_group_mapping)
-#
-#  name        = "${local.target_group_mapping[count.index]}-tg-${((count.index + 1) % 2) + 1}"
-#  port        = 80
-#  protocol    = "HTTP"
-#  target_type = "ip"
-#  vpc_id      = module.vpc.vpc_id
-#
-#  deregistration_delay = "5"
-#}
-
-resource "aws_lb_target_group" "blue_green_tg_1" {
-  name        = "blue-green-tg-1"
-  port        = 80
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = module.vpc.vpc_id
-
-  deregistration_delay = "5"
-}
-
-resource "aws_lb_target_group" "blue_green_tg_2" {
-  name        = "blue-green-tg-2"
-  port        = 80
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = module.vpc.vpc_id
-
-  deregistration_delay = "5"
-}
-
-resource "aws_lb_target_group" "blue_green_tg_3" {
-  name        = "blue-green-tg-3"
-  port        = 80
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = module.vpc.vpc_id
-
-  deregistration_delay = "5"
-}
-
-resource "aws_lb_target_group" "blue_green_tg_4" {
-  name        = "blue-green-tg-4"
-  port        = 80
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = module.vpc.vpc_id
-
-  deregistration_delay = "5"
-}
-
-resource "aws_lb_listener" "this" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = "80"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue_green_tg_1.arn
-  }
-
-  lifecycle {
-    ignore_changes = [default_action[0].target_group_arn]
-  }
-}
-
-resource "aws_lb_listener_rule" "auth" {
-  listener_arn = aws_lb_listener.this.arn
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue_green_tg_3.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/api/auth/*"]
+  security_group_ingress_rules = {
+    all_http = {
+      from_port   = 80
+      to_port     = 80
+      ip_protocol = "tcp"
+      description = "HTTP web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    all_https = {
+      from_port   = 443
+      to_port     = 443
+      ip_protocol = "tcp"
+      description = "HTTPS web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
     }
   }
+  security_group_egress_rules = {
+    all = {
+      ip_protocol = "-1"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+  }
+
+  listeners = {
+    http = {
+      port     = 80
+      protocol = "HTTP"
+
+      forward = {
+        target_group_key = "api_tg1"
+      }
+
+      rules = {
+        auth = {
+          actions = [{
+            type             = "forward"
+            target_group_key = "auth_tg1"
+          }]
+          conditions = [{
+            path_pattern = {
+              values = ["/api/auth/*"]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+
+  target_groups = {
+    api_tg1 = {
+      name_prefix       = "api"
+      protocol          = "HTTP"
+      port              = 80
+      target_type       = "ip"
+      create_attachment = false
+    }
+
+    api_tg2 = {
+      name_prefix       = "api"
+      protocol          = "HTTP"
+      port              = 80
+      target_type       = "ip"
+      create_attachment = false
+    }
+
+    auth_tg1 = {
+      name_prefix       = "auth"
+      protocol          = "HTTP"
+      port              = 80
+      target_type       = "ip"
+      create_attachment = false
+    }
+
+    auth_tg2 = {
+      name_prefix       = "auth"
+      protocol          = "HTTP"
+      port              = 80
+      target_type       = "ip"
+      create_attachment = false
+    }
+  }
+
+  tags = null
 }
 
 ################################################################################
@@ -350,7 +347,7 @@ resource "aws_ecs_cluster_capacity_providers" "example" {
 
 locals {
   task_def_containers = {
-    api = local.api_container_name,
+    api  = local.api_container_name,
     auth = local.auth_container_name
   }
 }
@@ -391,7 +388,8 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.blue_green_tg_1.arn
+    #    target_group_arn = aws_lb_target_group.blue_green_tg_1.arn
+    target_group_arn = module.alb.target_groups["api_tg1"].arn
     container_name   = local.api_container_name
     container_port   = 80
   }
@@ -407,6 +405,8 @@ resource "aws_ecs_service" "api" {
   }
 
   scheduling_strategy = "REPLICA"
+
+  depends_on = [module.alb]
 
   lifecycle {
     ignore_changes = [
@@ -424,7 +424,8 @@ resource "aws_ecs_service" "auth" {
   launch_type     = "FARGATE"
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.blue_green_tg_3.arn
+    #    target_group_arn = aws_lb_target_group.blue_green_tg_3.arn
+    target_group_arn = module.alb.target_groups["auth_tg1"].arn
     container_name   = local.auth_container_name
     container_port   = 80
   }
@@ -440,6 +441,8 @@ resource "aws_ecs_service" "auth" {
   }
 
   scheduling_strategy = "REPLICA"
+
+  depends_on = [module.alb]
 
   lifecycle {
     ignore_changes = [
@@ -667,57 +670,3 @@ module "roles" {
 
 
 #######################
-#module "alb" {
-#  source = "terraform-aws-modules/alb/aws"
-#
-#  name    = "my-alb-test"
-#  vpc_id  = module.vpc.vpc_id
-#  subnets = module.vpc.public_subnets
-#
-#  # Security Group
-#  security_group_ingress_rules = {
-#    all_http = {
-#      from_port   = 80
-#      to_port     = 80
-#      ip_protocol = "tcp"
-#      description = "HTTP web traffic"
-#      cidr_ipv4   = "0.0.0.0/0"
-#    }
-#    all_https = {
-#      from_port   = 443
-#      to_port     = 443
-#      ip_protocol = "tcp"
-#      description = "HTTPS web traffic"
-#      cidr_ipv4   = "0.0.0.0/0"
-#    }
-#  }
-#  security_group_egress_rules = {
-#    all = {
-#      ip_protocol = "-1"
-#      cidr_ipv4   = "0.0.0.0/0"
-#    }
-#  }
-#
-#  listeners = {
-#    test-listener = {
-#      port     = 80
-#      protocol = "HTTP"
-#
-#      forward = {
-#        target_group_key = "tg1"
-#      }
-#    }
-#  }
-#
-#  target_groups = {
-#    tg1 = {
-#      name_prefix      = "tg"
-#      protocol         = "HTTP"
-#      port             = 80
-#      target_type      = "ip"
-#      create_attachment = false
-#    }
-#  }
-#
-#  tags = local.tags
-#}
