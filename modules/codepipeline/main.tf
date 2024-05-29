@@ -68,7 +68,7 @@ resource "aws_codepipeline" "codepipeline" {
         AppSpecTemplatePath            = var.appspec_file_name
 
         Image1ArtifactName = var.image_artifact
-        Image1ContainerName : var.image_name_placeholder
+        Image1ContainerName = var.image_name_placeholder
       }
     }
   }

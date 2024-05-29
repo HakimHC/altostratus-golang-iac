@@ -16,8 +16,14 @@ variable "git_provider" {
   default     = "GitHub"
 }
 
-variable "source_repo_id" {
-  description = "ID of the source repository. Example: foo_user/bar_project"
+variable "api_source_repo_id" {
+  description = "ID of the source repository of the api service. Example: foo_user/bar_project"
   type        = string
   default     = "HakimHC/altostratus-golang-api"
+}
+
+variable "auth_source_repo_id" {
+  description = "ID of the source repository of the auth service. Example: foo_user/bar_project"
+  type        = string
+  default     = "HakimHC/altostratus-golang-auth"
 }
