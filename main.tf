@@ -13,54 +13,76 @@ locals {
 
   api_container_name  = "api"
   auth_container_name = "auth"
+
+  api_service_target_groups = ["api_tg1", "api_tg2"]
+  auth_service_target_groups = ["auth_tg1", "auth_tg2"]
 }
 
 locals {
   pipeline_config = {
     api = {
-      # CODE BUILD
       name               = local.api_container_name
-      ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
 
-      # CODE DEPLOY
+      environment = {
+        ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
+        ACCOUNT_ID = local.account_id
+        TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
+        JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
+      }
+
       target_groups = [
-        module.alb.target_groups["api_tg1"].name,
-        module.alb.target_groups["api_tg2"].name
+        for tg in local.api_service_target_groups : module.alb.target_groups[tg].name
       ]
+
       service = aws_ecs_service.api.name
 
-      # CODE PIPELINE
       source_repository_id = var.api_source_repo_id
     }
 
     auth = {
-      # CODE BUILD
       name               = local.auth_container_name
-      ECR_REPOSITORY_URL = aws_ecr_repository.auth.repository_url
 
-      # CODE DEPLOY
+      environment = {
+        ECR_REPOSITORY_URL = aws_ecr_repository.auth.repository_url
+        ACCOUNT_ID = local.account_id
+        TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
+        EXECUTION_ROLE_ARN = module.roles["ecs_execution"].iam_role_arn
+        JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
+      }
+
       target_groups = [
-        module.alb.target_groups["auth_tg1"].name,
-        module.alb.target_groups["auth_tg2"].name
+        for tg in local.auth_service_target_groups : module.alb.target_groups[tg].name
       ]
+
       service = aws_ecs_service.auth.name
 
-      # CODE PIPELINE
       source_repository_id = var.auth_source_repo_id
     }
   }
 }
 
 ################################################################################
+# JWT SECRET
+################################################################################
+resource "random_password" "jwt_secret" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+locals {
+  jwt_secret = random_password.jwt_secret.result
+}
+
+################################################################################
 # CODE BUILD
 ################################################################################
 module "codebuild" {
-  # TODO: investigate for_each { for k, v ... }
   source = "./modules/codebuild"
 
   for_each = local.pipeline_config
 
-  name        = "${each.value["name"]}_codebuild_project"
+  name        = "${each.value.name}_codebuild_project"
   description = "CodeBuild project that builds the docker images and pushes it to ECR"
 
   build_timeout = 10
@@ -69,9 +91,7 @@ module "codebuild" {
   source_type   = "CODEPIPELINE"
   artifact_type = "CODEPIPELINE"
 
-  environment_variables = {
-    ECR_REPOSITORY_URL = each.value["ECR_REPOSITORY_URL"]
-  }
+  environment_variables = each.value.environment
 
   tags = local.tags
 }
@@ -85,17 +105,17 @@ module "codedeploy" {
 
   for_each = local.pipeline_config
 
-  app_name               = "${each.value["name"]}_service_deploy_app"
-  deployment_group_name  = "${each.value["name"]}_service_deployment_group"
+  app_name               = "${each.value.name}_service_deploy_app"
+  deployment_group_name  = "${each.value.name}_service_deployment_group"
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
   service_role_arn = module.roles["codedeploy"].iam_role_arn
 
   ecs_cluster_name = aws_ecs_cluster.this.name
-  ecs_service_name = each.value["service"]
+  ecs_service_name = each.value.service
 
   prod_listener_arn = module.alb.listeners["http"].arn
-  target_groups     = each.value["target_groups"]
+  target_groups     = each.value.target_groups
 }
 
 ################################################################################
@@ -106,11 +126,11 @@ module "codepipeline" {
 
   for_each = local.pipeline_config
 
-  name                  = "${each.value["name"]}_deploy_pipeline"
+  name                  = "${each.value.name}_deploy_pipeline"
   role_arn              = module.roles["codepipeline"].iam_role_arn
   artifact_bucket_name  = aws_s3_bucket.artifact_bucket.bucket
   source_connection_arn = aws_codestarconnections_connection.this.arn
-  source_repository_id  = each.value["source_repository_id"]
+  source_repository_id  = each.value.source_repository_id
   source_branch_name    = "main"
   build_project_name    = module.codebuild[each.key].name
 
@@ -193,6 +213,11 @@ module "vpc" {
 ################################################################################
 # LOAD BALANCER
 ################################################################################
+
+locals {
+  auth_service_path = "/api/v1/auth"
+}
+
 module "alb" {
   source = "git::https://github.com/HakimHC/terraform-aws-alb-for-ecs-code-deploy.git?ref=master"
 
@@ -242,7 +267,7 @@ module "alb" {
           }]
           conditions = [{
             path_pattern = {
-              values = ["/api/auth/*"]
+              values = ["/api/v1/auth/*"]
               }
             }
           ]
@@ -280,6 +305,11 @@ module "alb" {
       create_attachment = false
 
       deregistration_delay = "5"
+
+#      health_check = {
+##        path = "${local.auth_service_path}/health"
+#        enabled = false
+#      }
     }
 
     auth_tg2 = {
@@ -288,6 +318,8 @@ module "alb" {
       port              = 80
       target_type       = "ip"
       create_attachment = false
+
+      deregistration_delay = "5"
     }
   }
 
@@ -317,6 +349,11 @@ module "ecs_sg" {
 ################################################################################
 resource "aws_ecs_cluster" "this" {
   name = "go_api_cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 
   tags = local.tags
 }
@@ -381,7 +418,6 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   load_balancer {
-    #    target_group_arn = aws_lb_target_group.blue_green_tg_1.arn
     target_group_arn = module.alb.target_groups["api_tg1"].arn
     container_name   = local.api_container_name
     container_port   = 80
@@ -399,7 +435,10 @@ resource "aws_ecs_service" "api" {
 
   scheduling_strategy = "REPLICA"
 
-  depends_on = [module.alb]
+  depends_on = [
+    module.alb,
+    module.roles["codedeploy"],
+  ]
 
   lifecycle {
     ignore_changes = [
@@ -417,7 +456,6 @@ resource "aws_ecs_service" "auth" {
   launch_type     = "FARGATE"
 
   load_balancer {
-    #    target_group_arn = aws_lb_target_group.blue_green_tg_3.arn
     target_group_arn = module.alb.target_groups["auth_tg1"].arn
     container_name   = local.auth_container_name
     container_port   = 80
@@ -435,7 +473,10 @@ resource "aws_ecs_service" "auth" {
 
   scheduling_strategy = "REPLICA"
 
-  depends_on = [module.alb]
+  depends_on = [
+    module.alb,
+    module.roles["codedeploy"],
+  ]
 
   lifecycle {
     ignore_changes = [
@@ -444,6 +485,56 @@ resource "aws_ecs_service" "auth" {
     ]
   }
 }
+
+resource "aws_dynamodb_table" "users" {
+  name           = "Users"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 5
+  hash_key       = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  attribute {
+    name = "username"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "username"
+    hash_key           = "username"
+    write_capacity     = 5
+    read_capacity      = 5
+    projection_type    = "ALL"
+  }
+
+  tags = local.tags
+}
+
+################################################################################
+# LOGS
+################################################################################
+resource "aws_cloudwatch_log_group" "ecs" {
+  name = "ecs-logs"
+}
+resource "aws_cloudwatch_log_group" "authtest" {
+  name = "awslogs-auth-service"
+}
+
+################################################################################
+# SECRETS
+################################################################################
+module "secrets" {
+  source = "./modules/secrets"
+
+  secrets = {
+    JWTSECRET = local.jwt_secret
+  }
+}
+
 
 ################################################################################
 # IAM POLICIES
@@ -593,7 +684,61 @@ data "aws_iam_policy_document" "codedeploy_policy" {
       "s3:GetBucketVersioning",
       "s3:PutObjectAcl",
       "s3:PutObject",
-      "iam:PassRole"
+      "iam:PassRole",
+    ]
+
+    resources = [
+      "*"
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "ecs_service_policy" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "ecs:DescribeServices",
+      "ecs:CreateTaskSet",
+      "ecs:UpdateServicePrimaryTaskSet",
+      "ecs:DeleteTaskSet",
+      "elasticloadbalancing:DescribeTargetGroups",
+      "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:ModifyListener",
+      "elasticloadbalancing:DescribeRules",
+      "elasticloadbalancing:ModifyRule",
+      "lambda:InvokeFunction",
+      "cloudwatch:DescribeAlarms",
+      "sns:Publish",
+      "iam:PassRole",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:DescribeTable",
+
+    ]
+
+    resources = [
+      "*"
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "ecs_execution_policy" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "ecr:GetAuthorizationToken",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "secretsmanager:GetSecretValue"
     ]
 
     resources = [
@@ -615,6 +760,16 @@ resource "aws_iam_policy" "codebuild_policy" {
 resource "aws_iam_policy" "codedeploy_policy" {
   name   = "codedeploy_policy"
   policy = data.aws_iam_policy_document.codedeploy_policy.json
+}
+
+resource "aws_iam_policy" "ecs_service_policy" {
+  name   = "ecs_service_policy"
+  policy = data.aws_iam_policy_document.ecs_service_policy.json
+}
+
+resource "aws_iam_policy" "ecs_execution_policy" {
+  name   = "ecs_execution_policy"
+  policy = data.aws_iam_policy_document.ecs_execution_policy.json
 }
 
 ################################################################################
@@ -640,6 +795,18 @@ locals {
       role_name               = "codedeploy_role"
       custom_role_policy_arns = [aws_iam_policy.codedeploy_policy.arn]
     }
+
+    ecs_service = {
+      trusted_role_services   = ["ecs-tasks.amazonaws.com"]
+      role_name               = "ecs_service_role"
+      custom_role_policy_arns = [aws_iam_policy.ecs_service_policy.arn]
+    }
+
+    ecs_execution = {
+      trusted_role_services   = ["ecs-tasks.amazonaws.com"]
+      role_name               = "ecsTaskExecutionRoleCustom"
+      custom_role_policy_arns = [aws_iam_policy.ecs_execution_policy.arn]
+    }
   }
 }
 
@@ -654,9 +821,9 @@ module "roles" {
 
   create_role = true
 
-  role_name         = each.value["role_name"]
+  role_name         = each.value.role_name
   role_requires_mfa = false
 
-  custom_role_policy_arns           = each.value["custom_role_policy_arns"]
-  number_of_custom_role_policy_arns = length(each.value["custom_role_policy_arns"])
+  custom_role_policy_arns           = each.value.custom_role_policy_arns
+  number_of_custom_role_policy_arns = length(each.value.custom_role_policy_arns)
 }
