@@ -1,19 +1,22 @@
-### Go API Challenge Infrastructure
+# Go API Infrastructure as Code
 
-#### Overview
+## Overview & Architecture
 This repository contains the Terraform (IaC) configuration for deploying an AWS infrastructure for two distinct ECS Fargate services.
 Each service has its own CodePipeline pipeline and implements a Blue/Green deployment strategy.
 The services utilize AWS Secrets Manager for credentials and DynamoDB as the database solution.
+<br><br>
+This challenge was proposed by the Development Team of Altostratus Cloud Consulting.
+<br>
 
 ![architecture](./.media/architecture.png "Architecture")
 
-#### Services
+## ECS Services to deploy
 1. **API Service**
 2. **Authentication Service**
 
 Each service has its pipeline configuration allowing for continuous integration and deployment via AWS CodePipeline, integrating with GitHub for source control.
 
-#### Key Components
+## Key Components
 - **ECS Fargate**: Runs the services in a serverless Fargate cluster.
 - **CodePipeline**: Orchestrates the CI/CD process for each service.
 - **CodeBuild**: Builds Docker images and pushes them to ECR.
@@ -25,55 +28,37 @@ Each service has its pipeline configuration allowing for continuous integration 
 - **CloudWatch**: Monitors and logs the services.
 - **IAM Roles and Policies**: Ensures correct permissions for all services and tasks.
 
-#### Prerequisites
+## Prerequisites
 - AWS Account
 - ```terraform``` installed
 - Configured AWS CLI (Or properly set environment variables, see ```.env.example```)
 - GitHub repository for source code (see: poner mis repos aqui)
 
-#### Initial Setup
-1. **Approve GitHub Connection**: Ensure the AWS CodeStar Connections to GitHub are approved to allow AWS CodePipeline to access the repository.
-2. **AWS Credentials**: Configure your AWS credentials for Terraform using the AWS CLI or environment variables.
-
-#### Deployment Instructions
+## Setup
 1. **Clone the Repository**: Start by cloning this repository to your local machine or cloud environment.
    ```bash
-   git clone <repository-url>
-   cd path/to/repository
+   git clone https://github.com/HakimHC/altostratus-golang-iac.git
+   cd <path-to-repo>
    ```
 2. **Initialize Terraform**:
    ```bash
    terraform init
    ```
-3. **Create a Terraform Plan**:
-   ```bash
-   terraform plan
-   ```
-4. **Apply the Terraform Configuration**:
+3. **Apply the Terraform Configuration**:
    ```bash
    terraform apply
    ```
    Approve the plan when prompted to start the deployment.
 
-5. **Monitor Deployment**: Check AWS CodePipeline for the status of the deployment. Approve any manual approval steps if necessary.
+### WARNING!!
+After applying the configuration, you must approve the pending connection created by the Terraform config.
+For this, you must go to the ```Developer Tools``` section in the AWS console and do the following:
 
-#### Configuration
-The Terraform configuration is modular, and settings can be adjusted in the `variables.tf` file. Ensure all configurations, such as project names, AWS regions, and resource specifics, align with your AWS setup.
+![connection pending](./.media/connection_pending.png "Connection Pending")
+Click on update pending connection and follow the instructions to configure the app on you profile.
 
-#### Post-Deployment
-After deployment, the ECS services will be operational, and any updates to the GitHub repository that holds the service code will trigger the pipelines to rebuild and redeploy the services.
+## Configuration
+The Terraform configuration is modular, and settings can be adjusted in the `variables.tf` file. Ensure all configurations, such as project and repository names, AWS regions, and resource specifics, align with your AWS setup.
 
-#### Troubleshooting
-For any deployment issues, refer to the CloudWatch logs for detailed error messages. Common issues may relate to IAM role permissions or resource limitations in your AWS account.
-
-#### Contributing
-Contributions to the IaC are welcome. Please follow the standard pull request process:
-1. Fork the repository.
-2. Make your changes in a feature branch.
-3. Submit a pull request to the main branch.
-
-For major changes, please open an issue first to discuss what you would like to change.
-
----
-
-This README provides a general guide to the infrastructure setup using this repository. Adjustments may be needed based on specific use cases and AWS configurations.
+## SPECIAL THANKS TO THE ALTOSTRATUS TEAM
+I want to thank the Altostratus team for all of the resources provided in the bootcamp and for making this possible. Thank you.
