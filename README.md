@@ -38,7 +38,7 @@ Each service has its pipeline configuration allowing for continuous integration 
 1. **Clone the Repository**: Start by cloning this repository to your local machine or cloud environment.
    ```bash
    git clone https://github.com/HakimHC/altostratus-golang-iac.git
-   cd <path-to-repo>
+   cd altostratus-golang-iac
    ```
 2. **Initialize Terraform**:
    ```bash
