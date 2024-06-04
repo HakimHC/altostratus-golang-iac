@@ -14,22 +14,22 @@ locals {
   api_container_name  = "api"
   auth_container_name = "auth"
 
-  api_service_target_groups = ["api_tg1", "api_tg2"]
+  api_service_target_groups  = ["api_tg1", "api_tg2"]
   auth_service_target_groups = ["auth_tg1", "auth_tg2"]
 }
 
 locals {
   pipeline_config = {
     api = {
-      name               = local.api_container_name
+      name = local.api_container_name
 
       environment = {
         ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
-        ACCOUNT_ID = local.account_id
-        TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
+        ACCOUNT_ID         = local.account_id
+        TASK_ROLE_ARN      = module.roles["ecs_service"].iam_role_arn
         EXECUTION_ROLE_ARN = module.roles["ecs_execution"].iam_role_arn
-        JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
-        LOG_GROUP_NAME = aws_cloudwatch_log_group.api.name
+        JWT_SECRET_ARN     = module.secrets.secret_arns["JWTSECRET"]
+        LOG_GROUP_NAME     = aws_cloudwatch_log_group.api.name
       }
 
       target_groups = [
@@ -42,15 +42,15 @@ locals {
     }
 
     auth = {
-      name               = local.auth_container_name
+      name = local.auth_container_name
 
       environment = {
         ECR_REPOSITORY_URL = aws_ecr_repository.auth.repository_url
-        ACCOUNT_ID = local.account_id
-        TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
+        ACCOUNT_ID         = local.account_id
+        TASK_ROLE_ARN      = module.roles["ecs_service"].iam_role_arn
         EXECUTION_ROLE_ARN = module.roles["ecs_execution"].iam_role_arn
-        JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
-        LOG_GROUP_NAME = aws_cloudwatch_log_group.auth.name
+        JWT_SECRET_ARN     = module.secrets.secret_arns["JWTSECRET"]
+        LOG_GROUP_NAME     = aws_cloudwatch_log_group.auth.name
       }
 
       target_groups = [
@@ -206,7 +206,7 @@ module "vpc" {
 
 locals {
   auth_service_path = "/api/v1/auth"
-  api_service_path = "/api/v1"
+  api_service_path  = "/api/v1"
 }
 
 module "alb" {
@@ -259,7 +259,7 @@ module "alb" {
           conditions = [{
             path_pattern = {
               values = ["/api/v1/auth/*"]
-              }
+            }
             }
           ]
         }
@@ -507,11 +507,11 @@ resource "aws_dynamodb_table" "users" {
   }
 
   global_secondary_index {
-    name               = "username"
-    hash_key           = "username"
-    write_capacity     = 5
-    read_capacity      = 5
-    projection_type    = "ALL"
+    name            = "username"
+    hash_key        = "username"
+    write_capacity  = 5
+    read_capacity   = 5
+    projection_type = "ALL"
   }
 
   tags = local.tags
@@ -535,11 +535,11 @@ resource "aws_dynamodb_table" "asteroids" {
   }
 
   global_secondary_index {
-    name               = "name"
-    hash_key           = "name"
-    write_capacity     = 5
-    read_capacity      = 5
-    projection_type    = "ALL"
+    name            = "name"
+    hash_key        = "name"
+    write_capacity  = 5
+    read_capacity   = 5
+    projection_type = "ALL"
   }
 
   tags = local.tags
