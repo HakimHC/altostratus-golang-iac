@@ -27,7 +27,9 @@ locals {
         ECR_REPOSITORY_URL = aws_ecr_repository.api.repository_url
         ACCOUNT_ID = local.account_id
         TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
+        EXECUTION_ROLE_ARN = module.roles["ecs_execution"].iam_role_arn
         JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
+        LOG_GROUP_NAME = aws_cloudwatch_log_group.api.name
       }
 
       target_groups = [
@@ -48,6 +50,7 @@ locals {
         TASK_ROLE_ARN = module.roles["ecs_service"].iam_role_arn
         EXECUTION_ROLE_ARN = module.roles["ecs_execution"].iam_role_arn
         JWT_SECRET_ARN = module.secrets.secret_arns["JWTSECRET"]
+        LOG_GROUP_NAME = aws_cloudwatch_log_group.auth.name
       }
 
       target_groups = [
@@ -59,19 +62,6 @@ locals {
       source_repository_id = var.auth_source_repo_id
     }
   }
-}
-
-################################################################################
-# JWT SECRET
-################################################################################
-resource "random_password" "jwt_secret" {
-  length           = 16
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-locals {
-  jwt_secret = random_password.jwt_secret.result
 }
 
 ################################################################################
@@ -216,6 +206,7 @@ module "vpc" {
 
 locals {
   auth_service_path = "/api/v1/auth"
+  api_service_path = "/api/v1"
 }
 
 module "alb" {
@@ -285,6 +276,10 @@ module "alb" {
       create_attachment = false
 
       deregistration_delay = "5"
+
+      health_check = {
+        path = "${local.api_service_path}/health"
+      }
     }
 
     api_tg2 = {
@@ -295,6 +290,10 @@ module "alb" {
       create_attachment = false
 
       deregistration_delay = "5"
+
+      health_check = {
+        path = "${local.api_service_path}/health"
+      }
     }
 
     auth_tg1 = {
@@ -306,10 +305,9 @@ module "alb" {
 
       deregistration_delay = "5"
 
-#      health_check = {
-##        path = "${local.auth_service_path}/health"
-#        enabled = false
-#      }
+      health_check = {
+        path = "${local.auth_service_path}/health"
+      }
     }
 
     auth_tg2 = {
@@ -320,6 +318,10 @@ module "alb" {
       create_attachment = false
 
       deregistration_delay = "5"
+
+      health_check = {
+        path = "${local.auth_service_path}/health"
+      }
     }
   }
 
@@ -336,8 +338,7 @@ module "ecs_sg" {
   description = "Security group for ECS service with TCP/80 open publicly"
   vpc_id      = module.vpc.vpc_id
 
-  # TODO: only allow inbound traffic from within the VPC
-  ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_cidr_blocks = [module.vpc.vpc_cidr_block]
   ingress_rules       = ["http-80-tcp", "http-8080-tcp"]
 
   egress_cidr_blocks = ["0.0.0.0/0"]
@@ -409,7 +410,6 @@ resource "aws_ecs_task_definition" "template" {
   ])
 }
 
-# TODO: for each
 resource "aws_ecs_service" "api" {
   name            = "${local.api_container_name}_service"
   cluster         = aws_ecs_cluster.this.id
@@ -486,6 +486,9 @@ resource "aws_ecs_service" "auth" {
   }
 }
 
+################################################################################
+# DYNAMODB
+################################################################################
 resource "aws_dynamodb_table" "users" {
   name           = "Users"
   billing_mode   = "PROVISIONED"
@@ -514,19 +517,56 @@ resource "aws_dynamodb_table" "users" {
   tags = local.tags
 }
 
+resource "aws_dynamodb_table" "asteroids" {
+  name           = "Asteroids"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 5
+  hash_key       = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  attribute {
+    name = "name"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "name"
+    hash_key           = "name"
+    write_capacity     = 5
+    read_capacity      = 5
+    projection_type    = "ALL"
+  }
+
+  tags = local.tags
+}
+
 ################################################################################
 # LOGS
 ################################################################################
-resource "aws_cloudwatch_log_group" "ecs" {
-  name = "ecs-logs"
-}
-resource "aws_cloudwatch_log_group" "authtest" {
+resource "aws_cloudwatch_log_group" "auth" {
   name = "awslogs-auth-service"
+}
+resource "aws_cloudwatch_log_group" "api" {
+  name = "awslogs-api-service"
 }
 
 ################################################################################
 # SECRETS
 ################################################################################
+resource "random_password" "jwt_secret" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+locals {
+  jwt_secret = random_password.jwt_secret.result
+}
 module "secrets" {
   source = "./modules/secrets"
 
